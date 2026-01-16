@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-data_path = 'input.txt'
+data_path = 'training.txt'
 batch_size = 8
 block_size = 128
 max_steps = 2000
