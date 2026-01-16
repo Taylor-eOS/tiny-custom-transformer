@@ -3,8 +3,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 data_path = 'training.txt'
+vocab_path = 'vocab.txt'
 batch_size = 8
-block_size = 128
+block_size = 64
 max_steps = 2000
 eval_interval = 100
 learning_rate = 4e-4
@@ -14,23 +15,46 @@ n_head = 8
 n_layer = 4
 dropout = 0.1
 torch.manual_seed(1337)
-text = open(data_path, 'r', encoding='utf-8').read()
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-stoi = {ch: i for i, ch in enumerate(chars)}
-itos = {i: ch for i, ch in enumerate(chars)}
-encode = lambda s: [stoi[c] for c in s]
-decode = lambda l: ''.join([itos[i] for i in l])
-data = torch.tensor(encode(text), dtype=torch.long)
+
+with open(vocab_path, 'r', encoding='utf-8') as f:
+    vocab = [line.strip() for line in f if line.strip()]
+
+assert '<UNK>' in vocab
+assert '<PAD>' in vocab
+
+stoi = {tok: i for i, tok in enumerate(vocab)}
+itos = {i: tok for tok, i in stoi.items()}
+vocab_size = len(vocab)
+pad_id = stoi['<PAD>']
+unk_id = stoi['<UNK>']
+
+def encode_words(text):
+    words = text.split()
+    return [stoi.get(w, unk_id) for w in words]
+
+def decode_words(ids):
+    return ' '.join(itos[i] for i in ids if i != pad_id)
+
+with open(data_path, 'r', encoding='utf-8') as f:
+    raw_text = f.read()
+
+tokens = encode_words(raw_text)
+data = torch.tensor(tokens, dtype=torch.long)
+
 n = int(0.9 * len(data))
 train_data = data[:n]
 val_data = data[n:]
 
 def get_batch(split):
     data_split = train_data if split == 'train' else val_data
-    ix = torch.randint(len(data_split) - block_size, (batch_size,))
-    x = torch.stack([data_split[i:i+block_size] for i in ix])
-    y = torch.stack([data_split[i+1:i+block_size+1] for i in ix])
+    ix = torch.randint(0, len(data_split) - 1, (batch_size,))
+    x = torch.full((batch_size, block_size), pad_id, dtype=torch.long)
+    y = torch.full((batch_size, block_size), pad_id, dtype=torch.long)
+    for i, start in enumerate(ix):
+        seq = data_split[start:start + block_size + 1]
+        seq_len = min(len(seq) - 1, block_size)
+        x[i, :seq_len] = seq[:seq_len]
+        y[i, :seq_len] = seq[1:seq_len + 1]
     return x.to(device), y.to(device)
 
 class RMSNorm(nn.Module):
@@ -61,8 +85,7 @@ class Head(nn.Module):
         wei = F.softmax(wei, dim=-1)
         wei = self.dropout(wei)
         v = self.value(x)
-        out = wei @ v
-        return out
+        return wei @ v
 
 class MultiheadAttention(nn.Module):
     def __init__(self, num_heads, head_size):
@@ -73,8 +96,7 @@ class MultiheadAttention(nn.Module):
 
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        out = self.dropout(self.proj(out))
-        return out
+        return self.dropout(self.proj(out))
 
 class FeedForward(nn.Module):
     def __init__(self):
@@ -88,8 +110,7 @@ class FeedForward(nn.Module):
         x1, x2 = x.chunk(2, dim=-1)
         x = F.silu(x1) * x2
         x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
+        return self.dropout(x)
 
 class Block(nn.Module):
     def __init__(self):
@@ -108,7 +129,7 @@ class Block(nn.Module):
 class SmallTransformer(nn.Module):
     def __init__(self):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embd, padding_idx=pad_id)
         self.position_embedding_table = nn.Parameter(torch.zeros(1, block_size, n_embd))
         self.blocks = nn.Sequential(*[Block() for _ in range(n_layer)])
         self.ln_f = RMSNorm(n_embd)
@@ -122,16 +143,20 @@ class SmallTransformer(nn.Module):
         x = self.blocks(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-        if targets is None:
-            loss = None
-        else:
-            loss = F.cross_entropy(logits.view(B * T, vocab_size), targets.view(B * T))
+        loss = None
+        if targets is not None:
+            loss = F.cross_entropy(
+                logits.view(B * T, vocab_size),
+                targets.view(B * T),
+                ignore_index=pad_id
+            )
         return logits, loss
 
 @torch.no_grad()
 def generate(model, max_new_tokens):
     model.eval()
-    idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+    idx = torch.full((1, 1), pad_id, dtype=torch.long, device=device)
+    idx[0, 0] = torch.randint(vocab_size, (1,))
     for _ in range(max_new_tokens):
         idx_cond = idx[:, -block_size:]
         logits, _ = model(idx_cond)
@@ -153,7 +178,7 @@ for step in range(max_steps):
     optimizer.step()
     if step % eval_interval == 0 or step == max_steps - 1:
         print(f"step {step}: train loss {loss.item():.4f}")
-        generated = generate(model, max_new_tokens=300)
-        print(decode(generated[0].tolist()))
+        generated = generate(model, max_new_tokens=50)
+        print(decode_words(generated[0].tolist()))
         print('\n---\n')
 
