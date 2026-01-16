@@ -6,8 +6,8 @@ data_path = 'training.txt'
 vocab_path = 'vocab.txt'
 batch_size = 8
 block_size = 64
-max_steps = 2000
-eval_interval = 100
+max_steps = 5000
+eval_interval = 500
 learning_rate = 4e-4
 device = 'cpu'
 n_embd = 256
@@ -19,21 +19,24 @@ torch.manual_seed(1337)
 with open(vocab_path, 'r', encoding='utf-8') as f:
     vocab = [line.strip() for line in f if line.strip()]
 
-assert '<UNK>' in vocab
-assert '<PAD>' in vocab
-
 stoi = {tok: i for i, tok in enumerate(vocab)}
 itos = {i: tok for tok, i in stoi.items()}
 vocab_size = len(vocab)
 pad_id = stoi['<PAD>']
 unk_id = stoi['<UNK>']
+eos_id = stoi['<EOS>']
 
 def encode_words(text):
-    words = text.split()
-    return [stoi.get(w, unk_id) for w in words]
+    return [stoi.get(w, unk_id) for w in text.split()]
 
 def decode_words(ids):
-    return ' '.join(itos[i] for i in ids if i != pad_id)
+    out = []
+    for i in ids:
+        if i == eos_id:
+            out.append('.')
+        elif i != pad_id:
+            out.append(itos[i])
+    return ' '.join(out)
 
 with open(data_path, 'r', encoding='utf-8') as f:
     raw_text = f.read()
