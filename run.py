@@ -18,7 +18,6 @@ torch.manual_seed(1337)
 
 with open(vocab_path, 'r', encoding='utf-8') as f:
     vocab = [line.strip() for line in f if line.strip()]
-
 stoi = {tok: i for i, tok in enumerate(vocab)}
 itos = {i: tok for tok, i in stoi.items()}
 vocab_size = len(vocab)
@@ -32,18 +31,20 @@ def encode_words(text):
 def decode_words(ids):
     out = []
     for i in ids:
-        if i == eos_id:
-            out.append('.')
-        elif i != pad_id:
-            out.append(itos[i])
+        if i == pad_id:
+            continue
+        tok = itos[i]
+        if tok == '<EOS>':
+            if out:
+                out[-1] = out[-1] + '.'
+        else:
+            out.append(tok)
     return ' '.join(out)
 
 with open(data_path, 'r', encoding='utf-8') as f:
     raw_text = f.read()
-
 tokens = encode_words(raw_text)
 data = torch.tensor(tokens, dtype=torch.long)
-
 n = int(0.9 * len(data))
 train_data = data[:n]
 val_data = data[n:]
