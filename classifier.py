@@ -56,7 +56,6 @@ def get_batch(split):
     return x.to(device), y.to(device)
 
 model = BinaryClassifier(vocab_size=vocab_size, block_size=block_size, n_embd=n_embd, n_head=n_head, n_layer=n_layer, pad_id=pad_id, dropout=dropout).to(device)
-
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
 for step in range(max_steps):
@@ -74,8 +73,12 @@ for step in range(max_steps):
             val_acc = (val_preds == val_y).float().mean().item()
         model.train()
         print(f"step {step}: train loss {loss.item():.4f}, val loss {val_loss.item():.4f}, val acc {val_acc:.4f}")
-        test_text = val_texts[0] if val_texts else "hello world"
+        if val_texts:
+            val_idx = torch.randint(len(val_texts), (1,)).item()
+            test_text = val_texts[val_idx]
+            sample_label = val_labels[val_idx]
         prob = predict(model, test_text, vocab, stoi, pad_id, unk_id, block_size, device)
-        print(f"Sample: '{test_text}' -> prob={prob:.4f}")
+        pred_class = 1 if prob > 0.5 else 0
+        print(f"'{test_text}' (true label: {sample_label}) -> prob positive={prob:.4f}")
         print()
 
