@@ -3,6 +3,7 @@ from collections import Counter
 import settings
 
 file_to_analyze = settings.INPUT_FILE
+#file_to_analyze = 'classifier_data.txt'
 vocab_file = settings.VOCAB_FILE
 vocab_limit = settings.VOCABULARY
 
