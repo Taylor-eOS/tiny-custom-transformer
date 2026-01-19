@@ -50,16 +50,14 @@ train_data = data[:n]
 val_data = data[n:]
 
 def get_batch(split):
-    data_split = train_data if split == 'train' else val_data
-    ix = torch.randint(0, len(data_split) - 1, (batch_size,))
-    x = torch.full((batch_size, block_size), pad_id, dtype=torch.long)
-    y = torch.full((batch_size, block_size), pad_id, dtype=torch.long)
-    for i, start in enumerate(ix):
-        seq = data_split[start:start + block_size + 1]
-        seq_len = min(len(seq) - 1, block_size)
-        x[i, :seq_len] = seq[:seq_len]
-        y[i, :seq_len] = seq[1:seq_len + 1]
-    return x.to(device), y.to(device)
+    data = train_data if split == 'train' else val_data
+    max_start = len(data) - block_size - 1
+    ix = torch.randint(0, max_start, (batch_size,))
+    x = torch.stack([data[i:i+block_size] for i in ix])
+    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    x = x.to(device)
+    y = y.to(device)
+    return x, y
 
 model = SmallTransformer(vocab_size=vocab_size, block_size=block_size, n_embd=n_embd, n_head=n_head, n_layer=n_layer, pad_id=pad_id, dropout=dropout).to(device)
 
